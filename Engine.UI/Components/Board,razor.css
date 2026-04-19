@@ -1,0 +1,27 @@
+/* Engine.UI/Components/Board.razor.css */
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  width: 600px;
+  height: 600px;
+  border: 4px solid #2c2c2c;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+.square {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.dark {
+  background-color: #769656;
+}
+
+.light {
+  background-color: #eeeed2;
+}

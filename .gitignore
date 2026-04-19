@@ -131,3 +131,28 @@ $RECYCLE.BIN/
 .DS_Store
 
 _NCrunch*
+
+# .NET Core & Build Artifacts
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Mac OS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# IDEs (Antigravity / VS Code / Rider)
+.idea/
+.vscode/
+*.user
+*.userprefs
+
+# Publish output
+out/
+Publish/
+
+# Blazor WebAssembly specific
+wwwroot/_framework/

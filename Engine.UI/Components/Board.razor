@@ -1,0 +1,17 @@
+@* Engine.UI/Components/Board.razor *@
+
+<div class="board">
+  @for (int rank = 7; rank >= 0; rank--) {
+    @for (int file = 0; file < 8; file++) {
+      int currentRank = rank;
+      int currentFile = file;
+      bool isDark = (currentRank + currentFile) % 2 == 0;
+      string cssClass = isDark ? "square dark" : "square light";
+      <div class="@cssClass" data-rank="@currentRank" data-file="@currentFile" />
+    }
+  }
+</div>
+
+@code {
+  // Logic hooks and state will go here as we connect the engine
+}

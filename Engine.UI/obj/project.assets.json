@@ -541,6 +541,29 @@
           "build/Microsoft.NET.Sdk.WebAssembly.Pack.props": {},
           "build/Microsoft.NET.Sdk.WebAssembly.Pack.targets": {}
         }
+      },
+      "Engine.Chess/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "Engine.Shared": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/Engine.Chess.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/Engine.Chess.dll": {}
+        }
+      },
+      "Engine.Shared/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "compile": {
+          "bin/placeholder/Engine.Shared.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/Engine.Shared.dll": {}
+        }
       }
     },
     "net10.0/browser-wasm": {
@@ -1082,6 +1105,29 @@
         "build": {
           "build/Microsoft.NET.Sdk.WebAssembly.Pack.props": {},
           "build/Microsoft.NET.Sdk.WebAssembly.Pack.targets": {}
+        }
+      },
+      "Engine.Chess/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "Engine.Shared": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/Engine.Chess.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/Engine.Chess.dll": {}
+        }
+      },
+      "Engine.Shared/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "compile": {
+          "bin/placeholder/Engine.Shared.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/Engine.Shared.dll": {}
         }
       }
     }
@@ -2123,10 +2169,22 @@
         "tools/net472/Microsoft.NET.Sdk.WebAssembly.Pack.Tasks.dll",
         "tools/net472/Microsoft.NET.WebAssembly.Webcil.dll"
       ]
+    },
+    "Engine.Chess/1.0.0": {
+      "type": "project",
+      "path": "../Engine.Chess/Engine.Chess.csproj",
+      "msbuildProject": "../Engine.Chess/Engine.Chess.csproj"
+    },
+    "Engine.Shared/1.0.0": {
+      "type": "project",
+      "path": "../Engine.Shared/Engine.Shared.csproj",
+      "msbuildProject": "../Engine.Shared/Engine.Shared.csproj"
     }
   },
   "projectFileDependencyGroups": {
     "net10.0": [
+      "Engine.Chess >= 1.0.0",
+      "Engine.Shared >= 1.0.0",
       "Microsoft.AspNetCore.App.Internal.Assets >= 10.0.6",
       "Microsoft.AspNetCore.Components.WebAssembly >= 10.0.6",
       "Microsoft.AspNetCore.Components.WebAssembly.DevServer >= 10.0.6",
@@ -2159,7 +2217,14 @@
       "frameworks": {
         "net10.0": {
           "targetAlias": "net10.0",
-          "projectReferences": {}
+          "projectReferences": {
+            "/Users/ss/Personal/projects/ToDo/ChessEngine/Engine.Chess/Engine.Chess.csproj": {
+              "projectPath": "/Users/ss/Personal/projects/ToDo/ChessEngine/Engine.Chess/Engine.Chess.csproj"
+            },
+            "/Users/ss/Personal/projects/ToDo/ChessEngine/Engine.Shared/Engine.Shared.csproj": {
+              "projectPath": "/Users/ss/Personal/projects/ToDo/ChessEngine/Engine.Shared/Engine.Shared.csproj"
+            }
+          }
         }
       },
       "warningProperties": {
