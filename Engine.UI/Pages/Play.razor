@@ -1,0 +1,314 @@
+@page "/"
+@implements IDisposable
+@inject GameSession Session
+@inject SoundPlayer Sound
+@inject IJSRuntime Js
+
+@*
+    The board page. It owns only what belongs to the screen itself: which square is
+    selected, whether a dialog is open, and the clock tick. Everything about the
+    game lives in GameSession, so the rules and the rendering never drift apart.
+*@
+
+<PageTitle>Engine.Chess</PageTitle>
+
+<header class="app-header">
+    <div class="brand">
+        <h1 class="brand-mark">engine<span>.</span>chess</h1>
+        <span class="brand-note">Bitboard engine in C#</span>
+    </div>
+
+    <div class="header-actions">
+        <button class="btn btn-icon" title="@(Sound.Enabled ? "Mute" : "Unmute")"
+                aria-label="@(Sound.Enabled ? "Mute sound" : "Unmute sound")" @onclick="ToggleSound">
+            @if (Sound.Enabled) {
+                <svg viewBox="0 0 16 16"><path d="M8 2v12L4.5 11H2V5h2.5zM11 5.5a3.5 3.5 0 0 1 0 5v-5z" /></svg>
+            } else {
+                <svg viewBox="0 0 16 16"><path d="M8 2v12L4.5 11H2V5h2.5zM11 6l3 3m0-3l-3 3" stroke="currentColor" stroke-width="1.4" fill="none" /></svg>
+            }
+        </button>
+        <button class="btn btn-icon" title="Flip board" aria-label="Flip board" @onclick="Session.FlipBoard">
+            <svg viewBox="0 0 16 16"><path d="M8 1l3 3H9v4H7V4H5zM8 15l-3-3h2V8h2v4h2z" /></svg>
+        </button>
+        <button class="btn" @onclick="() => _showPicker = true">New game</button>
+    </div>
+</header>
+
+<main class="app-body">
+    <div class="board-column">
+        <PlayerBar Name="@Opponent.Name" Rating="Opponent.Elo" Initials="@Opponent.Initials"
+                   Accent="@Opponent.Accent" Captured="Session.Game.CapturedBy(BotColor)"
+                   CapturedColor="Session.PlayerColor" MaterialLead="MaterialLead(BotColor)"
+                   IsThinking="Session.State == SessionState.BotThinking"
+                   IsToMove="Session.Game.SideToMove == BotColor" IsGameOver="Session.Game.IsOver"
+                   ShowClock="!Session.TimeControl.IsUnlimited" Clock="ClockFor(BotColor)" />
+
+        <div class="board-row">
+            <EvaluationBar Centipawns="Session.CurrentEvaluation" Flipped="Session.BoardFlipped" />
+
+            <ChessBoardView Position="Session.BoardPosition" Flipped="Session.BoardFlipped"
+                            Destinations="_destinations" SelectedSquare="_selected"
+                            LastMove="LastMove" MoveCounter="Session.Game.History.Count"
+                            Premove="Session.Premove" Hint="Session.Hint"
+                            Interactive="Session.CanMove || Session.CanPremove"
+                            PlayerColor="Session.PlayerColor"
+                            OnSquarePressed="OnSquarePressed" OnMoveAttempted="OnMoveAttempted">
+
+                @if (Session.PendingPromotion is not null) {
+                    <PromotionPicker Color="Session.PlayerColor"
+                                     OnChosen="OnPromotionChosen" OnCancel="Session.CancelPromotion" />
+                } else if (Session.State == SessionState.Finished && !_resultDismissed) {
+                    <GameOverCard Result="Session.Game.Result" PlayerColor="Session.PlayerColor"
+                                  CanReview="Session.Game.History.Count > 0"
+                                  OnReview="StartReview" OnRematch="Rematch"
+                                  OnNewOpponent="() => _showPicker = true" />
+                }
+            </ChessBoardView>
+        </div>
+
+        <PlayerBar Name="You" Initials="YO" Accent="var(--amber)"
+                   Captured="Session.Game.CapturedBy(Session.PlayerColor)"
+                   CapturedColor="BotColor" MaterialLead="MaterialLead(Session.PlayerColor)"
+                   IsToMove="Session.Game.SideToMove == Session.PlayerColor" IsGameOver="Session.Game.IsOver"
+                   ShowClock="!Session.TimeControl.IsUnlimited" Clock="ClockFor(Session.PlayerColor)" />
+
+        <div class="board-controls">
+            <button class="btn" disabled="@(!Session.CanMove || Session.IsFindingHint)"
+                    @onclick="Session.ShowHintAsync">
+                @(Session.IsFindingHint ? "Thinking" : "Hint")
+            </button>
+            <button class="btn" disabled="@(Session.Game.History.Count == 0 || Session.Game.IsOver)"
+                    @onclick="Session.TakeBackAsync">
+                Take back
+            </button>
+            <button class="btn" disabled="@Session.Game.IsOver" @onclick="Session.ResignAsync">Resign</button>
+            <button class="btn" disabled="@(Session.Game.History.Count == 0)" @onclick="CopyPgn">
+                @(_pgnCopied ? "Copied" : "Copy PGN")
+            </button>
+            @if (Session.Premove is not null) {
+                <button class="btn" @onclick="Session.ClearPremove">Cancel premove</button>
+            }
+        </div>
+    </div>
+
+    <div class="side-column">
+        <MoveListPanel Moves="Session.Game.History" ViewingPly="Session.ViewingPly"
+                       OnSeek="Session.ViewPly" ReviewedAt="Session.ReviewedAt" />
+
+        @if (Session.Game.IsOver || Session.Review is not null) {
+            <ReviewPanel Report="Session.Review" IsRunning="Session.State == SessionState.Reviewing"
+                         Progress="Session.ReviewProgress" Total="Session.Game.History.Count"
+                         WhiteName="@(Session.PlayerColor == Color.White ? "You" : Opponent.Name)"
+                         BlackName="@(Session.PlayerColor == Color.Black ? "You" : Opponent.Name)"
+                         OnRun="StartReview" />
+        }
+
+        <EngineTelemetry Progress="Session.Telemetry"
+                         IsThinking="Session.State == SessionState.BotThinking"
+                         Line="@TelemetryLine" />
+    </div>
+</main>
+
+@if (_showPicker) {
+    <OpponentPicker InitialBot="Session.Bot" InitialColor="Session.PlayerColor"
+                    InitialTimeControl="Session.TimeControl" CanCancel="true"
+                    OnStart="StartGame" OnCancel="() => _showPicker = false" />
+}
+
+@code {
+    /// <summary>Fast enough for the clock's tenths to move, slow enough not to churn renders.</summary>
+    private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(100);
+
+    private int _selected = Squares.None;
+    private ulong _destinations;
+    private bool _showPicker;
+    private bool _resultDismissed;
+    private bool _pgnCopied;
+    private PeriodicTimer? _clockTimer;
+    private CancellationTokenSource _ticking = new();
+
+    private BotProfile Opponent => Session.Bot;
+
+    private Color BotColor => Session.PlayerColor.Opponent();
+
+    private Move LastMove => Session.ViewingPly > 0 && Session.ViewingPly <= Session.Game.History.Count
+        ? Session.Game.History[Session.ViewingPly - 1].Move
+        : Move.None;
+
+    protected override void OnInitialized() {
+        Session.Changed += OnSessionChanged;
+        Session.SoundRequested += OnSoundRequested;
+        _ = RunClockAsync();
+    }
+
+    private void OnSessionChanged() {
+        // Clearing the selection keeps a highlight from surviving a move the session
+        // played on the player's behalf, such as a promotion or a queued premove.
+        // It is kept while the bot thinks, because that is when premoves are chosen.
+        if (!Session.CanMove && !Session.CanPremove) ClearSelection();
+        _pgnCopied = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSoundRequested(string sound) => _ = Sound.PlayAsync(sound);
+
+    // ---------------------------------------------------------------- board input
+
+    private async Task OnSquarePressed(int square) {
+        Session.ClearHint();
+
+        if (Session.CanPremove) {
+            PressForPremove(square);
+            return;
+        }
+        if (!Session.CanMove) return;
+
+        // Pressing a highlighted destination completes a click-to-move.
+        if (_selected != Squares.None && Bitboards.Contains(_destinations, square)) {
+            int from = _selected;
+            ClearSelection();
+            await Session.TryPlayAsync(from, square);
+            return;
+        }
+
+        ulong destinations = Session.Game.DestinationsFrom(square);
+        if (destinations == 0) {
+            ClearSelection();
+            return;
+        }
+
+        _selected = square;
+        _destinations = destinations;
+    }
+
+    /// <summary>
+    /// While the bot is thinking, the same presses queue a move instead of playing
+    /// one. Destinations are taken from the current position, which is only a guide:
+    /// the real position will have moved on by the time the premove is played.
+    /// </summary>
+    private void PressForPremove(int square) {
+        if (_selected != Squares.None && Bitboards.Contains(_destinations, square)) {
+            Session.SetPremove(_selected, square);
+            ClearSelection();
+            return;
+        }
+
+        Piece piece = Session.Game.Position.PieceAt(square);
+        if (piece == Piece.None || piece.ColorOf() != Session.PlayerColor) {
+            Session.ClearPremove();
+            ClearSelection();
+            return;
+        }
+
+        _selected = square;
+        _destinations = Session.Game.Position.PseudoDestinationsFrom(square);
+    }
+
+    private async Task OnMoveAttempted((int From, int To) attempt) {
+        ClearSelection();
+
+        if (Session.CanPremove) {
+            Session.SetPremove(attempt.From, attempt.To);
+            return;
+        }
+        if (!Session.CanMove) return;
+
+        bool played = await Session.TryPlayAsync(attempt.From, attempt.To);
+        if (!played) await Sound.PlayAsync("illegal");
+    }
+
+    private async Task OnPromotionChosen(PieceType piece) {
+        ClearSelection();
+        await Session.CompletePromotionAsync(piece);
+    }
+
+    private void ClearSelection() {
+        _selected = Squares.None;
+        _destinations = 0;
+    }
+
+    // ---------------------------------------------------------------- commands
+
+    private async Task StartGame((BotProfile Bot, Color Color, TimeControl Time) settings) {
+        _showPicker = false;
+        _resultDismissed = false;
+        ClearSelection();
+        await Session.StartNewGameAsync(settings.Bot, settings.Color, settings.Time);
+    }
+
+    private Task Rematch() => StartGame((Session.Bot, Session.PlayerColor, Session.TimeControl));
+
+    private async Task StartReview() {
+        _resultDismissed = true;
+        await Session.RunReviewAsync();
+    }
+
+    private void ToggleSound() {
+        Sound.Toggle();
+        if (Sound.Enabled) _ = Sound.PlayAsync("move");
+    }
+
+    private async Task CopyPgn() {
+        string pgn = Session.Game.ToPgn(
+            Session.PlayerColor == Color.White ? "You" : Opponent.Name,
+            Session.PlayerColor == Color.Black ? "You" : Opponent.Name);
+
+        try {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", pgn);
+            _pgnCopied = true;
+        } catch (JSException) {
+            // Clipboard access can be refused; the button simply will not confirm.
+        }
+    }
+
+    // ---------------------------------------------------------------- derived display
+
+    /// <summary>Material lead in pawns, shown only against the side that is ahead.</summary>
+    private int MaterialLead(Color side) {
+        int balance = Session.Game.MaterialBalance / 100;
+        int lead = side == Color.White ? balance : -balance;
+        return Math.Max(0, lead);
+    }
+
+    private TimeSpan ClockFor(Color side) => side == Color.White ? Session.WhiteClock : Session.BlackClock;
+
+    /// <summary>
+    /// The engine's expected line, in notation. Rendered from the position the bot
+    /// is thinking about, which is why it is built here rather than in the engine.
+    /// </summary>
+    private string TelemetryLine {
+        get {
+            IReadOnlyList<Move>? line = Session.Telemetry?.PrincipalVariation;
+            if (line is null || line.Count == 0) return string.Empty;
+
+            try {
+                return Engine.Chess.Notation.San.ToSanLine(Session.Game.Position, line);
+            } catch (Exception) {
+                // The line is a snapshot and the board may have moved on since.
+                return string.Empty;
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- clock
+
+    private async Task RunClockAsync() {
+        _clockTimer = new PeriodicTimer(TickInterval);
+        try {
+            while (await _clockTimer.WaitForNextTickAsync(_ticking.Token)) {
+                if (Session.TimeControl.IsUnlimited || Session.Game.IsOver) continue;
+                Session.Tick();
+            }
+        } catch (OperationCanceledException) {
+            // The page is going away.
+        }
+    }
+
+    public void Dispose() {
+        Session.Changed -= OnSessionChanged;
+        Session.SoundRequested -= OnSoundRequested;
+        _ticking.Cancel();
+        _ticking.Dispose();
+        _clockTimer?.Dispose();
+    }
+}

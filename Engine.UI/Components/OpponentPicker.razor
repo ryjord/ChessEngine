@@ -1,0 +1,93 @@
+@*
+    The new-game dialog: choose an opponent, a side and a time control.
+    Each bot states plainly how it plays, so the choice is about the kind of game
+    you want rather than about a number.
+*@
+
+<div class="modal-backdrop" @onclick="OnCancel">
+    <div class="modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-label="Start a new game">
+        <div class="modal-head">
+            <h2>New game</h2>
+            <p>Pick an opponent. Ratings are approximate and set how deep each bot looks and how often it slips.</p>
+        </div>
+
+        <div class="modal-body">
+            <div class="bot-list">
+                @foreach (BotProfile profile in BotProfile.All) {
+                    <button class="bot-option @(profile.Name == _bot.Name ? "selected" : "")"
+                            @onclick="() => _bot = profile">
+                        <span class="avatar" style="background:@profile.Accent">@profile.Initials</span>
+                        <span class="bot-meta">
+                            <span class="bot-name">@profile.Name <span class="bot-elo">@profile.Elo</span></span>
+                            <span class="bot-style">@profile.Style</span>
+                        </span>
+                    </button>
+                }
+            </div>
+
+            <div class="field">
+                <span class="eyebrow">Your side</span>
+                <div class="segmented">
+                    <button class="@(_color == Color.White ? "active" : "")" @onclick="() => _color = Color.White">
+                        White
+                    </button>
+                    <button class="@(_color == Color.Black ? "active" : "")" @onclick="() => _color = Color.Black">
+                        Black
+                    </button>
+                </div>
+            </div>
+
+            <div class="field">
+                <span class="eyebrow">Time control</span>
+                <div class="segmented">
+                    @foreach (TimeControl control in TimeControl.All) {
+                        <button class="@(control.Name == _timeControl.Name ? "active" : "")"
+                                @onclick="() => _timeControl = control">
+                            @control.Name
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="field card-actions" style="justify-content:flex-end">
+                @if (CanCancel) {
+                    <button class="btn" @onclick="OnCancel">Cancel</button>
+                }
+                <button class="btn btn-primary" @onclick="Start">Start game</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private BotProfile _bot = BotProfile.Default;
+    private Color _color = Color.White;
+    private TimeControl _timeControl = TimeControl.Unlimited;
+
+    /// <summary>Preselects the settings from the current game so reopening feels continuous.</summary>
+    [Parameter]
+    public BotProfile? InitialBot { get; set; }
+
+    [Parameter]
+    public Color InitialColor { get; set; } = Color.White;
+
+    [Parameter]
+    public TimeControl? InitialTimeControl { get; set; }
+
+    [Parameter]
+    public bool CanCancel { get; set; } = true;
+
+    [Parameter]
+    public EventCallback<(BotProfile Bot, Color Color, TimeControl Time)> OnStart { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    protected override void OnInitialized() {
+        _bot = InitialBot ?? BotProfile.Default;
+        _color = InitialColor;
+        _timeControl = InitialTimeControl ?? TimeControl.Unlimited;
+    }
+
+    private Task Start() => OnStart.InvokeAsync((_bot, _color, _timeControl));
+}
