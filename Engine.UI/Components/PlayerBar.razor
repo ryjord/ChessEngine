@@ -1,0 +1,87 @@
+@*
+    One side of the game: who they are, what they have captured, and their clock.
+    Shown above and below the board so the layout mirrors a real board between two
+    players.
+*@
+
+<div class="player-bar">
+    <div class="avatar" style="background:@Accent">@Initials</div>
+
+    <div class="player-identity">
+        <div class="player-name">
+            <span>@Name</span>
+            @if (Rating is int rating) {
+                <span class="player-rating">@rating</span>
+            }
+            @if (IsThinking) {
+                <span class="thinking" aria-label="Thinking"><i></i><i></i><i></i></span>
+            }
+        </div>
+
+        <div class="captured">
+            @foreach (PieceType captured in Captured) {
+                <PieceSprite Piece="Pieces.Create(CapturedColor, captured)" />
+            }
+            @if (MaterialLead > 0) {
+                <span class="lead">+@MaterialLead</span>
+            }
+        </div>
+    </div>
+
+    @if (ShowClock) {
+        <div class="clock @(IsToMove && !IsGameOver ? "running" : "") @(IsLowOnTime ? "low" : "")">
+            @FormatClock(Clock)
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Seconds remaining below which the clock turns red.</summary>
+    private const int LowTimeSeconds = 30;
+
+    [Parameter, EditorRequired]
+    public string Name { get; set; } = string.Empty;
+
+    [Parameter]
+    public int? Rating { get; set; }
+
+    [Parameter]
+    public string Initials { get; set; } = "??";
+
+    [Parameter]
+    public string Accent { get; set; } = "var(--text-muted)";
+
+    /// <summary>Pieces this player has captured, so they are drawn in the opponent's colour.</summary>
+    [Parameter]
+    public IReadOnlyList<PieceType> Captured { get; set; } = [];
+
+    [Parameter]
+    public Color CapturedColor { get; set; }
+
+    /// <summary>Material advantage in pawns, shown only for the player who is ahead.</summary>
+    [Parameter]
+    public int MaterialLead { get; set; }
+
+    [Parameter]
+    public bool IsThinking { get; set; }
+
+    [Parameter]
+    public bool IsToMove { get; set; }
+
+    [Parameter]
+    public bool IsGameOver { get; set; }
+
+    [Parameter]
+    public bool ShowClock { get; set; }
+
+    [Parameter]
+    public TimeSpan Clock { get; set; }
+
+    private bool IsLowOnTime => ShowClock && IsToMove && !IsGameOver && Clock.TotalSeconds < LowTimeSeconds;
+
+    /// <summary>Shows tenths under ten seconds, the way a digital chess clock does.</summary>
+    private static string FormatClock(TimeSpan time) =>
+        time.TotalSeconds < 10
+            ? $"{time.Seconds}.{time.Milliseconds / 100}"
+            : $"{(int)time.TotalMinutes}:{time.Seconds:00}";
+}

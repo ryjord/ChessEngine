@@ -1,0 +1,49 @@
+@*
+    The result, laid over the board. It states what happened and offers the two
+    things anyone wants next: see what went wrong, or play again.
+*@
+
+<div class="overlay">
+    <div class="card" role="alertdialog" aria-label="Game over">
+        <h2>@Headline</h2>
+        <p>@Result.ToDescription()</p>
+        <div class="card-actions">
+            @if (CanReview) {
+                <button class="btn btn-primary" @onclick="OnReview">Review game</button>
+            }
+            <button class="btn" @onclick="OnRematch">Play again</button>
+            <button class="btn" @onclick="OnNewOpponent">Change opponent</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public GameResult Result { get; set; }
+
+    /// <summary>The side the person played, so the headline can be addressed to them.</summary>
+    [Parameter]
+    public Color PlayerColor { get; set; }
+
+    [Parameter]
+    public bool CanReview { get; set; } = true;
+
+    [Parameter]
+    public EventCallback OnReview { get; set; }
+
+    [Parameter]
+    public EventCallback OnRematch { get; set; }
+
+    [Parameter]
+    public EventCallback OnNewOpponent { get; set; }
+
+    private string Headline {
+        get {
+            if (Result.IsDraw()) return "Draw";
+
+            string score = Result.ToScoreString();
+            bool playerWon = (score == "1-0") == (PlayerColor == Color.White);
+            return playerWon ? "You won" : "You lost";
+        }
+    }
+}

@@ -1,0 +1,62 @@
+@*
+    The engine readout.
+
+    A hand-written engine is the point of this project, so the interface shows what
+    it is actually doing rather than hiding it behind a spinner: how deep it has
+    searched, how many positions it has looked at, and the line it currently expects.
+    Every figure here comes from the live search.
+*@
+
+<div class="panel telemetry">
+    <div class="panel-head" style="padding:0 0 9px;border:none">
+        <span class="eyebrow">Engine</span>
+        @if (IsThinking) {
+            <span class="thinking" aria-label="Searching"><i></i><i></i><i></i></span>
+        }
+    </div>
+
+    @if (Progress is null) {
+        <p class="telemetry-idle">Idle. The engine reports its search here while it thinks.</p>
+    } else {
+        <div class="telemetry-grid">
+            <div class="telemetry-stat">
+                <span class="telemetry-value">@Progress.Depth</span>
+                <span class="telemetry-label">Depth</span>
+            </div>
+            <div class="telemetry-stat">
+                <span class="telemetry-value">@Compact(Progress.Nodes)</span>
+                <span class="telemetry-label">Nodes</span>
+            </div>
+            <div class="telemetry-stat">
+                <span class="telemetry-value">@Compact(Progress.NodesPerSecond)</span>
+                <span class="telemetry-label">Nodes/sec</span>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Line)) {
+            <div class="telemetry-line">
+                <span class="eyebrow">Expected line</span>
+                @Line
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public SearchProgress? Progress { get; set; }
+
+    [Parameter]
+    public bool IsThinking { get; set; }
+
+    /// <summary>The principal variation rendered in notation, supplied by the page.</summary>
+    [Parameter]
+    public string? Line { get; set; }
+
+    /// <summary>Shortens large counts so the readout keeps a fixed width as it climbs.</summary>
+    private static string Compact(long value) => value switch {
+        >= 1_000_000 => $"{value / 1_000_000.0:0.#}M",
+        >= 1_000 => $"{value / 1_000.0:0.#}k",
+        _ => value.ToString(),
+    };
+}

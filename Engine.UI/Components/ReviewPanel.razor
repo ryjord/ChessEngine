@@ -1,0 +1,111 @@
+@*
+    The post-game report: how accurately each side played, and the tally of how
+    their moves were classified. Accuracy is shown before the breakdown because it
+    is the one number people want, and the breakdown explains where it came from.
+*@
+
+<div class="panel">
+    @if (Report is null) {
+        <div class="panel-head">
+            <span class="eyebrow">Game review</span>
+        </div>
+        <div style="padding:14px 13px">
+            @if (IsRunning) {
+                <p style="font-size:13px;color:var(--text-muted)">
+                    Checking move @Progress of @Total against the engine.
+                </p>
+                <div class="progress">
+                    <div class="progress-fill" style="width:@(Total == 0 ? 0 : Progress * 100 / Total)%"></div>
+                </div>
+            } else {
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+                    Have the engine check every move and score how accurately each side played.
+                </p>
+                <button class="btn btn-primary" style="width:100%" disabled="@(Total == 0)" @onclick="OnRun">
+                    Review game
+                </button>
+            }
+        </div>
+    } else {
+        <div class="review-summary">
+            <div class="accuracy">
+                <div class="accuracy-value" style="color:@AccuracyColor(Report.White.Accuracy)">
+                    @Report.White.Accuracy.ToString("0.0")
+                </div>
+                <div class="accuracy-label">@WhiteName</div>
+            </div>
+            <div class="accuracy-divider">Accuracy</div>
+            <div class="accuracy">
+                <div class="accuracy-value" style="color:@AccuracyColor(Report.Black.Accuracy)">
+                    @Report.Black.Accuracy.ToString("0.0")
+                </div>
+                <div class="accuracy-label">@BlackName</div>
+            </div>
+        </div>
+
+        <div class="quality-table">
+            @foreach (MoveQuality quality in Ranked) {
+                int white = Report.White.CountOf(quality);
+                int black = Report.Black.CountOf(quality);
+                @if (white > 0 || black > 0) {
+                    <div class="quality-row">
+                        <span class="count">@white</span>
+                        <span class="name">
+                            <span class="quality-dot" style="background:@quality.Color()"></span>
+                            @quality.Label()
+                        </span>
+                        <span class="count">@black</span>
+                    </div>
+                }
+            }
+
+            <div class="quality-row" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">
+                <span class="count">@Report.White.AverageCentipawnLoss.ToString("0")</span>
+                <span class="name">Average centipawn loss</span>
+                <span class="count">@Report.Black.AverageCentipawnLoss.ToString("0")</span>
+            </div>
+            <div class="quality-row">
+                <span class="count">@Report.White.EstimatedElo</span>
+                <span class="name">Estimated rating</span>
+                <span class="count">@Report.Black.EstimatedElo</span>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Listed best to worst, which is the order people read a report in.</summary>
+    private static readonly MoveQuality[] Ranked = [
+        MoveQuality.Brilliant, MoveQuality.Great, MoveQuality.Best, MoveQuality.Excellent,
+        MoveQuality.Good, MoveQuality.Book, MoveQuality.Inaccuracy, MoveQuality.Mistake,
+        MoveQuality.Miss, MoveQuality.Blunder,
+    ];
+
+    [Parameter]
+    public GameReport? Report { get; set; }
+
+    [Parameter]
+    public bool IsRunning { get; set; }
+
+    [Parameter]
+    public int Progress { get; set; }
+
+    [Parameter]
+    public int Total { get; set; }
+
+    [Parameter]
+    public string WhiteName { get; set; } = "White";
+
+    [Parameter]
+    public string BlackName { get; set; } = "Black";
+
+    [Parameter]
+    public EventCallback OnRun { get; set; }
+
+    private static string AccuracyColor(double accuracy) => accuracy switch {
+        >= 90 => "var(--quality-brilliant)",
+        >= 80 => "var(--quality-best)",
+        >= 65 => "var(--quality-inaccuracy)",
+        _ => "var(--quality-blunder)",
+    };
+}

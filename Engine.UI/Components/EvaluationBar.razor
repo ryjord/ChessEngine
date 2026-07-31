@@ -1,0 +1,42 @@
+@*
+    The evaluation bar.
+
+    The mapping from centipawns to bar height is deliberately not linear. A linear
+    bar spends most of its travel on positions nobody can tell apart and pins to an
+    end the moment anyone is a rook up. Reusing the win-probability curve that
+    accuracy is scored with means the bar moves where the game is actually being
+    decided, and the same numbers back both features.
+*@
+
+<div class="eval-bar" title="@Readout" role="img" aria-label="Evaluation: @Readout">
+    <div class="eval-white" style="height:@($"{WhiteShare:0.##}")%"></div>
+    <div class="eval-midline"></div>
+    <div class="eval-readout @(WhiteShare >= 50 ? "bottom" : "top")">@Readout</div>
+</div>
+
+@code {
+    /// <summary>Keeps a decisive position from filling the bar completely, so it stays readable.</summary>
+    private const double MaximumShare = 96;
+
+    [Parameter]
+    public int Centipawns { get; set; }
+
+    /// <summary>Flip so the bar matches a board seen from black's side.</summary>
+    [Parameter]
+    public bool Flipped { get; set; }
+
+    private double WhiteShare {
+        get {
+            double share = Math.Clamp(WinProbability.FromCentipawns(Centipawns), 100 - MaximumShare, MaximumShare);
+            return Flipped ? 100 - share : share;
+        }
+    }
+
+    private string Readout {
+        get {
+            if (SearchScores.ToMateDistance(Centipawns) is int mate) return $"M{Math.Abs(mate)}";
+            double pawns = Centipawns / 100.0;
+            return pawns >= 0 ? $"+{pawns:0.0}" : $"{pawns:0.0}";
+        }
+    }
+}

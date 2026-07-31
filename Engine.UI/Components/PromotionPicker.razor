@@ -1,0 +1,32 @@
+@*
+    Asks which piece a pawn becomes. Queen is listed first because it is nearly
+    always the answer, but the other three are one click away rather than hidden:
+    under-promotion to a knight is a real move and a board that assumes a queen
+    quietly loses games.
+*@
+
+<div class="overlay" @onclick="OnCancel">
+    <div class="promotion" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-label="Choose a piece">
+        @foreach (PieceType type in Choices) {
+            <button @onclick="() => OnChosen.InvokeAsync(type)"
+                    title="Promote to @type.ToString().ToLowerInvariant()"
+                    aria-label="Promote to @type.ToString().ToLowerInvariant()">
+                <PieceSprite Piece="Pieces.Create(Color, type)" />
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly PieceType[] Choices =
+        [PieceType.Queen, PieceType.Rook, PieceType.Bishop, PieceType.Knight];
+
+    [Parameter]
+    public Color Color { get; set; }
+
+    [Parameter]
+    public EventCallback<PieceType> OnChosen { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+}

@@ -1,0 +1,119 @@
+@inject IJSRuntime Js
+
+@*
+    The move list, laid out like a scoresheet: a numbered row per move with white's
+    and black's notation side by side. Clicking any move rewinds the board to that
+    point. Once the game has been reviewed each move also carries its quality badge.
+*@
+
+<div class="panel moves-panel">
+    <div class="panel-head">
+        <span class="eyebrow">Moves</span>
+        <div class="header-actions">
+            <button class="btn btn-icon" title="First move" aria-label="Go to first move"
+                    disabled="@(ViewingPly == 0)" @onclick="() => OnSeek.InvokeAsync(0)">
+                <svg viewBox="0 0 16 16"><path d="M4 3h2v10H4zM13 3v10L6 8z" /></svg>
+            </button>
+            <button class="btn btn-icon" title="Previous move" aria-label="Go to previous move"
+                    disabled="@(ViewingPly == 0)" @onclick="() => OnSeek.InvokeAsync(ViewingPly - 1)">
+                <svg viewBox="0 0 16 16"><path d="M11 3v10L4 8z" /></svg>
+            </button>
+            <button class="btn btn-icon" title="Next move" aria-label="Go to next move"
+                    disabled="@(ViewingPly >= Moves.Count)" @onclick="() => OnSeek.InvokeAsync(ViewingPly + 1)">
+                <svg viewBox="0 0 16 16"><path d="M5 3v10l7-5z" /></svg>
+            </button>
+            <button class="btn btn-icon" title="Latest move" aria-label="Go to latest move"
+                    disabled="@(ViewingPly >= Moves.Count)" @onclick="() => OnSeek.InvokeAsync(Moves.Count)">
+                <svg viewBox="0 0 16 16"><path d="M10 3h2v10h-2zM3 3v10l7-5z" /></svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="moves-scroll" @ref="_scroller">
+        @if (Moves.Count == 0) {
+            <p class="moves-empty">No moves yet. White to play.</p>
+        } else {
+            @for (int row = 0; row < RowCount; row++) {
+                int whitePly = row * 2;
+                int blackPly = whitePly + 1;
+                <div class="move-row">
+                    <div class="move-number">@(Moves[whitePly].MoveNumber)</div>
+                    @RenderCell(whitePly)
+                    @RenderCell(blackPly)
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private ElementReference _scroller;
+    private int _renderedCount = -1;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<PlayedMove> Moves { get; set; } = [];
+
+    /// <summary>Which ply the board is showing, so the matching cell can be marked.</summary>
+    [Parameter]
+    public int ViewingPly { get; set; }
+
+    [Parameter]
+    public EventCallback<int> OnSeek { get; set; }
+
+    /// <summary>Looks up the review verdict for a ply, or null when the game has not been reviewed.</summary>
+    [Parameter]
+    public Func<int, ReviewedMove?>? ReviewedAt { get; set; }
+
+    private int RowCount => (Moves.Count + 1) / 2;
+
+    private RenderFragment RenderCell(int ply) => builder => {
+        if (ply >= Moves.Count) {
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", "move-cell empty");
+            builder.CloseElement();
+            return;
+        }
+
+        ReviewedMove? reviewed = ReviewedAt?.Invoke(ply);
+        // A move's cell is "current" when the board shows the position just after it.
+        bool isCurrent = ViewingPly == ply + 1;
+
+        builder.OpenElement(0, "button");
+        builder.AddAttribute(1, "class", $"move-cell {(isCurrent ? "current" : string.Empty)}");
+        builder.AddAttribute(2, "title", reviewed is null ? Moves[ply].San : Describe(reviewed));
+        builder.AddAttribute(3, "onclick", EventCallback.Factory.Create(this, () => OnSeek.InvokeAsync(ply + 1)));
+
+        builder.AddContent(4, Moves[ply].San);
+
+        if (reviewed is not null) {
+            builder.OpenElement(5, "span");
+            builder.AddAttribute(6, "class", "quality-badge");
+            builder.AddAttribute(7, "style", $"color:{reviewed.Quality.Color()}");
+            builder.AddContent(8, reviewed.Quality.Symbol());
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    };
+
+    private static string Describe(ReviewedMove reviewed) =>
+        reviewed.MatchedBestMove
+            ? $"{reviewed.San} - {reviewed.Quality.Label()}"
+            : $"{reviewed.San} - {reviewed.Quality.Label()}. {reviewed.BestMoveSan} was better ({reviewed.CentipawnLoss} centipawns).";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+        // Follow the game as it is played, but leave the scroll alone while the
+        // player is browsing back through earlier moves.
+        if (_renderedCount == Moves.Count || ViewingPly != Moves.Count) {
+            _renderedCount = Moves.Count;
+            return;
+        }
+
+        _renderedCount = Moves.Count;
+        try {
+            await Js.InvokeVoidAsync("engineChess.scrollToEnd", _scroller);
+        } catch (JSException) {
+            // Scrolling is cosmetic; a failure here must not interrupt the game.
+        }
+    }
+}
