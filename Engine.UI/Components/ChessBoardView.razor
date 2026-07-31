@@ -1,0 +1,234 @@
+@implements IDisposable
+@inject IJSRuntime Js
+
+@*
+    The board.
+
+    Squares, pieces and hints are three stacked layers rather than one grid of
+    cells. Positioning pieces absolutely is what allows a piece to slide from its
+    old square to its new one and to be dragged out from under the pointer, neither
+    of which is possible if the piece is a child of the square it stands on.
+
+    Pointer handling lives in JavaScript and calls back here exactly twice per
+    gesture, on press and on release. Having Blazor handle every pointermove meant
+    re-rendering the whole board at pointer rate, which is what made dragging feel
+    sticky; now a drag only updates two custom properties and never re-renders.
+
+    Both ways of moving share one selection: click a piece then click a square, or
+    drag it across.
+*@
+
+<div class="board-frame" @ref="_boardElement">
+
+    <div class="board-squares">
+        @for (int row = 0; row < 8; row++) {
+            @for (int column = 0; column < 8; column++) {
+                int square = SquareAt(row, column);
+                <div class="square @SquareClasses(square)" data-square="@Squares.ToName(square)">
+                    @if (column == 0) {
+                        <span class="coord coord-rank">@(Squares.RankOf(square) + 1)</span>
+                    }
+                    @if (row == 7) {
+                        <span class="coord coord-file">@((char)('a' + Squares.FileOf(square)))</span>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    <div class="board-pieces">
+        @foreach (int square in OccupiedSquares()) {
+            Piece piece = Position.PieceAt(square);
+            <div @key="PieceKey(square)" class="@PieceClasses(square, piece)" style="@PieceStyle(square)">
+                <PieceSprite Piece="piece" />
+            </div>
+        }
+    </div>
+
+    <div class="hints">
+        @foreach (int square in HintSquares()) {
+            <div class="@(IsCaptureTarget(square) ? "hint capture" : "hint")" style="@SquareStyle(square)"></div>
+        }
+    </div>
+
+    @ChildContent
+</div>
+
+@code {
+    private ElementReference _boardElement;
+    private DotNetObjectReference<ChessBoardView>? _self;
+    private int _dragFrom = Squares.None;
+
+    [Parameter, EditorRequired]
+    public Position Position { get; set; } = default!;
+
+    [Parameter]
+    public bool Flipped { get; set; }
+
+    /// <summary>Squares the selected piece may legally move to.</summary>
+    [Parameter]
+    public ulong Destinations { get; set; }
+
+    [Parameter]
+    public int SelectedSquare { get; set; } = Squares.None;
+
+    /// <summary>The last move played, highlighted so the bot's reply is easy to spot.</summary>
+    [Parameter]
+    public Move LastMove { get; set; } = Move.None;
+
+    /// <summary>A move queued to play once the opponent has replied.</summary>
+    [Parameter]
+    public (int From, int To)? Premove { get; set; }
+
+    /// <summary>The suggested move, shown when the player asks for a hint.</summary>
+    [Parameter]
+    public Move Hint { get; set; } = Move.None;
+
+    /// <summary>Increments with every played move; used to restart the slide animation.</summary>
+    [Parameter]
+    public int MoveCounter { get; set; }
+
+    [Parameter]
+    public bool Interactive { get; set; } = true;
+
+    [Parameter]
+    public Color PlayerColor { get; set; } = Color.White;
+
+    /// <summary>Called when a square is pressed, for selecting and deselecting.</summary>
+    [Parameter]
+    public EventCallback<int> OnSquarePressed { get; set; }
+
+    /// <summary>Called when a piece is dropped on a different square.</summary>
+    [Parameter]
+    public EventCallback<(int From, int To)> OnMoveAttempted { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    // ---------------------------------------------------------------- layout
+
+    /// <summary>Board square shown at a given display row and column, accounting for the flip.</summary>
+    private int SquareAt(int row, int column) {
+        int file = Flipped ? 7 - column : column;
+        int rank = Flipped ? row : 7 - row;
+        return Squares.From(file, rank);
+    }
+
+    private int ColumnOf(int square) => Flipped ? 7 - Squares.FileOf(square) : Squares.FileOf(square);
+
+    private int RowOf(int square) => Flipped ? Squares.RankOf(square) : 7 - Squares.RankOf(square);
+
+    private string PieceClasses(int square, Piece piece) {
+        var classes = new List<string>(4) { "piece" };
+        if (square == _dragFrom) classes.Add("dragging");
+        if (ShouldSlide(square)) classes.Add("sliding");
+        if (!CanGrab(piece)) classes.Add("not-yours");
+        return string.Join(' ', classes);
+    }
+
+    private string SquareStyle(int square) =>
+        $"left:{ColumnOf(square) * 12.5:0.###}%;top:{RowOf(square) * 12.5:0.###}%";
+
+    private string PieceStyle(int square) {
+        string position = SquareStyle(square);
+        if (!ShouldSlide(square)) return position;
+
+        // Offsets are in multiples of the piece's own size, which is one square.
+        int columnDelta = ColumnOf(LastMove.From) - ColumnOf(square);
+        int rowDelta = RowOf(LastMove.From) - RowOf(square);
+        return $"{position};--slide-x:{columnDelta * 100}%;--slide-y:{rowDelta * 100}%";
+    }
+
+    private bool ShouldSlide(int square) => !LastMove.IsNull && square == LastMove.To;
+
+    /// <summary>
+    /// Keying the moved piece by the move counter forces Blazor to replace the
+    /// element, which is what restarts the slide animation. Every other piece keeps
+    /// a stable key so it is never needlessly re-created.
+    /// </summary>
+    private object PieceKey(int square) =>
+        !LastMove.IsNull && square == LastMove.To ? (square, MoveCounter) : (square, 0);
+
+    private string SquareClasses(int square) {
+        var classes = new List<string>(4) {
+            (Squares.FileOf(square) + Squares.RankOf(square)) % 2 == 0 ? "dark" : "light",
+        };
+
+        // Order matters: these all tint the same overlay, and the later class in
+        // the stylesheet wins, so the more urgent state is listed last there.
+        if (!LastMove.IsNull && (square == LastMove.From || square == LastMove.To)) classes.Add("last-move");
+        if (!Hint.IsNull && (square == Hint.From || square == Hint.To)) classes.Add("hinted");
+        if (Premove is var (from, to) && (square == from || square == to)) classes.Add("premove");
+        if (square == SelectedSquare) classes.Add("selected");
+        if (IsCheckedKing(square)) classes.Add("in-check");
+
+        return string.Join(' ', classes);
+    }
+
+    private bool IsCheckedKing(int square) =>
+        Position.IsInCheck && square == Position.KingSquare(Position.SideToMove);
+
+    private IEnumerable<int> OccupiedSquares() {
+        for (int square = 0; square < Squares.Count; square++) {
+            if (Position.PieceAt(square) != Piece.None) yield return square;
+        }
+    }
+
+    private IEnumerable<int> HintSquares() {
+        ulong remaining = Destinations;
+        while (remaining != 0) yield return Bitboards.PopLeastSignificant(ref remaining);
+    }
+
+    /// <summary>A hint is drawn as a ring rather than a dot when something can be taken there.</summary>
+    private bool IsCaptureTarget(int square) {
+        if (Position.PieceAt(square) != Piece.None) return true;
+        return square == Position.EnPassantSquare
+               && SelectedSquare != Squares.None
+               && Position.PieceAt(SelectedSquare).TypeOf() == PieceType.Pawn;
+    }
+
+    private bool CanGrab(Piece piece) => Interactive && piece.ColorOf() == PlayerColor;
+
+    // ---------------------------------------------------------------- interaction
+
+    [JSInvokable]
+    public async Task HandlePress(int row, int column) {
+        int square = SquareAt(row, column);
+
+        // Mark the piece as being carried before the drag begins, so the single
+        // render this press causes already has the piece in its dragging state.
+        _dragFrom = Interactive && CanGrab(Position.PieceAt(square)) ? square : Squares.None;
+
+        await OnSquarePressed.InvokeAsync(square);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public Task HandleDragEnded() {
+        if (_dragFrom == Squares.None) return Task.CompletedTask;
+
+        _dragFrom = Squares.None;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public async Task HandleDrop(int fromRow, int fromColumn, int toRow, int toColumn) {
+        _dragFrom = Squares.None;
+        await OnMoveAttempted.InvokeAsync((SquareAt(fromRow, fromColumn), SquareAt(toRow, toColumn)));
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+        if (!firstRender) return;
+
+        _self = DotNetObjectReference.Create(this);
+        await Js.InvokeVoidAsync("engineChess.attachBoard", _boardElement, _self);
+    }
+
+    public void Dispose() {
+        // Best effort: the listeners go away with the page anyway.
+        _ = Js.InvokeVoidAsync("engineChess.detachBoard", _boardElement).AsTask();
+        _self?.Dispose();
+    }
+}
