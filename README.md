@@ -7,6 +7,8 @@ analysis are all in this repository.
 Play a full game against one of six bots, then have the engine review every move
 you made and tell you how accurately you played.
 
+**[Play it in your browser](https://ryjord.github.io/ChessEngine/)** — no install required.
+
 ![The board mid-game, with the move list and the engine's live search readout](docs/screenshot.png)
 
 ## Running it
